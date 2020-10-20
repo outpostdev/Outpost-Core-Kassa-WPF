@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Outpost_Core_Kassa_WPF {
+﻿namespace Outpost_Core_Kassa_WPF {
 	public class ReceiptLine {
 		public string  SKU         { get; set; }
 		public string  Barcode     { get; set; }

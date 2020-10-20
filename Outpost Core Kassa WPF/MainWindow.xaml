@@ -9,6 +9,13 @@
 		Height="450"
 		Width="800"
 		MouseDown="WindowMouseDownCallback">
+	<Window.Resources>
+		<local:IsIntZeroConverter x:Key="IsIntZeroConverter"/>
+		<local:IsIntNotZeroConverter x:Key="IsIntNotZeroConverter"/>
+		<local:FalseToCollapsedConverter x:Key="FalseToCollapsedConverter"/>
+		<SolidColorBrush x:Key="TrainingBrush" Color="DeepSkyBlue" Opacity="0.5"/>
+		<SolidColorBrush x:Key="RefundBrush" Color="Orange" Opacity="0.5"/>
+	</Window.Resources>
 	<Grid Name="MainGrid">
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="2*"/>
@@ -86,6 +93,28 @@
 						</DataGridTextColumn>
 					</DataGrid.Columns>
 				</DataGrid>
+
+				<StackPanel HorizontalAlignment="Center"
+							VerticalAlignment="Center"
+							Height="Auto"
+							Width="Auto">
+					<Label Content="Training"
+						   FontSize="72"
+						   HorizontalAlignment="Center"
+						   VerticalAlignment="Center"
+						   Foreground="{StaticResource TrainingBrush}"
+						   Visibility="{Binding ElementName=TrainingButton,
+					                            Path=IsChecked,
+					                            Converter={StaticResource FalseToCollapsedConverter}}"/>
+					<Label Content="Refund"
+						   FontSize="72"
+						   HorizontalAlignment="Center"
+						   VerticalAlignment="Center"
+						   Foreground="{StaticResource RefundBrush}"
+						   Visibility="{Binding ElementName=RefundButton,
+					                            Path=IsChecked,
+					                            Converter={StaticResource FalseToCollapsedConverter}}"/>
+				</StackPanel>
 			</Grid>
 
 			<Grid Grid.Row="1" VerticalAlignment="Center">
@@ -93,23 +122,42 @@
 					Content="Clear Receipt"
 					HorizontalAlignment="Left"
 					VerticalAlignment="Center"
-					Click="ClearReceiptClickCallback"
-					IsEnabled="{Binding ElementName=ReceiptDataGrid, Path=Items.Count}"/>
+					Click="ClearReceiptClickCallback"/>
 				<Button
 					Content="Finalize Transaction"
 					HorizontalAlignment="Right"
 					VerticalAlignment="Center"
 					Click="FinalizeTransactionClickCallback"
-					IsEnabled="{Binding ElementName=ReceiptDataGrid, Path=Items.Count}"/>
+					IsEnabled="{Binding ElementName=ReceiptDataGrid,
+					                    Path=Items.Count,
+					                    Converter={StaticResource IsIntNotZeroConverter}}"/>
 			</Grid>
 		</Grid>
 
 		<Grid Grid.Column="1">
 			<StackPanel Margin="10">
 				<ToggleButton Name="TrainingButton"
-							  Content="Training"/>
+							  Content="Training"
+							  IsEnabled="{Binding ElementName=ReceiptDataGrid,
+					                              Path=Items.Count,
+					                              Converter={StaticResource IsIntZeroConverter}}"/>
 				<ToggleButton Name="RefundButton"
-							  Content="Refund"/>
+							  Content="Refund"
+							  IsEnabled="{Binding ElementName=ReceiptDataGrid,
+					                              Path=Items.Count,
+					                              Converter={StaticResource IsIntZeroConverter}}"/>
+				<Label Name="CompanyNameLabel"
+					   HorizontalAlignment="Center"
+					   Content="Drinks &amp; Nibbles"/>
+				<Label Name="CompanyStreetLabel"
+					   HorizontalAlignment="Center"
+					   Content="Park west 1"/>
+				<Label Name="CompanyCityLabel"
+					   HorizontalAlignment="Center"
+					   Content="1000 Brussels"/>
+				<Label Name="CompanyVATLabel"
+					   HorizontalAlignment="Center"
+					   Content="BTW BE 0000.000.097"/>
 			</StackPanel>
 		</Grid>
 	</Grid>

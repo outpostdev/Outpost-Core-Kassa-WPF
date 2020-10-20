@@ -1,18 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Data.SqlClient;
 using System.Security;
 using System.Diagnostics;
@@ -42,8 +33,8 @@ namespace Outpost_Core_Kassa_WPF {
 				MessageBox.Show("Failed to initialize FDM client.");
 			}
 
-			// DEBUG
-			DebugWriteAllProducts();
+			// TODO: DEBUG
+			//DebugWriteAllProducts();
 		}
 
 		public bool InitializeFDMClient() {
@@ -82,21 +73,15 @@ namespace Outpost_Core_Kassa_WPF {
 			PosEvent posevent = new PosEvent(pos_serial_nr, terminal_id, terminal_name, operator_id, operator_name,
 											 transaction_nr, DateTime.Now);
 
-			posevent.IsRefund = false;
-			posevent.IsTrainingMode = false;
+			Debug.Assert(TrainingButton.IsChecked != null);
+			Debug.Assert(RefundButton.IsChecked != null);
+
+			posevent.IsTrainingMode = (bool)TrainingButton.IsChecked;
+			posevent.IsRefund = (bool)RefundButton.IsChecked;
 			posevent.IsFinalized = true;
-			posevent.DrawerOpen = (posevent.IsFinalized && (posevent.Payments.Count != 0));
+			posevent.DrawerOpen = posevent.IsFinalized && (posevent.Payments.Count != 0);
 
 			posevent.SetVatRate(21, 12, 6, 0);
-			/*
-			int quantity = posevent.IsRefund ? -1 : 1;
-
-			decimal total = 2.20m * quantity + 11.90m * quantity; // TODO: DEBUG
-
-			posevent.Products.Add(new ProductLine("SOFT004", "Cola", quantity, 2.20m * quantity, "A"));
-			posevent.Products.Add(new ProductLine("SNAC007", "Snack", quantity, 11.90m * quantity, "B"));
-			*/
-
 
 			decimal payment_total = 0.0m; // DEBUG
 			foreach(ReceiptLine l in ReceiptLines) {
@@ -105,21 +90,161 @@ namespace Outpost_Core_Kassa_WPF {
 				payment_total += l.TotalPrice;
 			}
 
-			// string PaymentId, string PaymentName, PaymentTypes Type, int Quantity, decimal Amount
 			posevent.Payments.Add(new PaymentLine("PAY001", "Euro", PaymentTypes.Cash, 1, payment_total));
-
-			MessageBox.Show("Sending 'HashAndSign' event to FDM...");
 
 			FDMClient.BeginHashAndSign(posevent, HashAndSignCallback, null); // Argument 3 feeds the callback.
 		}
 
-		void PrintReceipt(PosEventSignResult receipt) {
-			// TODO
-			Debug.Assert(!receipt.Event.IsTrainingMode);
-			Debug.Assert(!receipt.Event.IsRefund);
-			
-			
-			MessageBox.Show("TODO: Print receipt.");
+		void PrintReceipt(PosEventSignResult pesr) {
+			string tab = "    "; // Necessary since the receipt printer doesn't seem to support normal tab characters.
+			string total_label = "Total: ";
+
+			StringBuilder sb = new StringBuilder();
+			try {
+				// Initialization.
+				PosPrinter.RecLetterQuality = true;		
+				PosPrinter.SetBitmap(1, PrinterStation.Receipt, "..\\..\\Resources\\outpost_logo_black.bmp",
+				                     PosPrinter.RecLineWidth, PosPrinter.PrinterBitmapCenter);
+
+				// Header logo.
+				sb.Append(PrintCommands.bitmap_1);
+
+				// Establishment data.
+				Dispatcher.Invoke(() => {
+					sb.Append(
+						PrintCommands.center +
+						CompanyNameLabel.Content   + "\n" +
+						CompanyStreetLabel.Content + "\n" +
+						CompanyCityLabel.Content   + "\n" +
+						CompanyVATLabel.Content    + "\n\n"
+					);
+				});
+				
+				// Receipt title.
+				sb.Append(PrintCommands.double_size);
+				if(pesr.Event.IsTrainingMode) sb.Append("TRAINING RECEIPT\n");
+				else sb.Append("VAT RECEIPT\n");
+				if(pesr.Event.IsRefund) sb.Append("REFUND\n");
+				sb.Append(PrintCommands.reset);
+
+				decimal receipt_total = 0.0m;
+				int space_count;
+
+				// Product lines & total.
+				sb.Append(PrintCommands.bold + "Products & Services:\n" + PrintCommands.reset);
+				foreach(ProductLine l in pesr.Event.Products) {
+					space_count =
+						PosPrinter.RecLineChars -
+						l.Quantity.ToString().Length -
+						l.ProductName.ToString().Length -
+						l.SellingPrice.ToString().Length -
+						l.PrintVatRateId.ToString().Length -
+						tab.Length - 3;
+
+					// TODO: Handle (space_count <= 0) case.
+					Debug.Assert(0 < space_count);
+
+					sb.Append(
+						string.Format(tab + "{0}x {1}", l.Quantity, l.ProductName) +
+						string.Concat(Enumerable.Repeat(" ", space_count)) +
+						string.Format("{0} {1}\n", l.SellingPrice, l.PrintVatRateId)
+					);
+
+					receipt_total += l.SellingPrice;
+				}
+				sb.Append(tab + string.Concat(Enumerable.Repeat("-", PosPrinter.RecLineChars - tab.Length)) + "\n");
+				space_count = PosPrinter.RecLineChars - total_label.Length -
+					          receipt_total.ToString().Length - tab.Length - 2;
+				sb.Append(tab + total_label + string.Concat(Enumerable.Repeat(" ", space_count)) +
+					      receipt_total.ToString() + "\n\n");
+
+				// Payment lines.
+				// TODO: Add support for change & refund.
+				sb.Append(PrintCommands.bold + "Payment:\n" + PrintCommands.reset);
+				foreach(PaymentLine l in pesr.Event.Payments) {
+					space_count = PosPrinter.RecLineChars - l.PaymentName.ToString().Length -
+						          l.PayAmount.ToString().Length - tab.Length - 2;
+
+					sb.Append(tab + l.PaymentName + string.Concat(Enumerable.Repeat(" ", space_count)) + l.PayAmount + "\n");
+				}
+				sb.Append("\n");
+
+				// VAT data.
+				int len, taxable_max_char_count = 0, rate_max_char_count = 0, amount_max_char_count = 0;
+				sb.Append(PrintCommands.bold + "VAT:\n" + PrintCommands.reset); // TODO: Multilingual support.
+				foreach(VATSplit v in pesr.VATSplit) {
+					// Calculate spacing for alignment.
+					len = v.TaxableAmount.ToString().Length;
+					if(taxable_max_char_count < len) taxable_max_char_count = len;
+					len = v.VATRate.ToString().Length;
+					if(rate_max_char_count < len) rate_max_char_count = len;
+					len = v.VATAmount.ToString().Length;
+					if(amount_max_char_count < len) amount_max_char_count = len;
+				}
+				foreach(VATSplit v in pesr.VATSplit) {
+					sb.Append(
+						tab + v.PrintVatRateId + ": " +
+						string.Concat(Enumerable.Repeat(" ", taxable_max_char_count - v.TaxableAmount.ToString().Length)) +
+						v.TaxableAmount + " @ " +
+						string.Concat(Enumerable.Repeat(" ", rate_max_char_count - v.VATRate.ToString().Length)) +
+						v.VATRate + "% = " +
+						string.Concat(Enumerable.Repeat(" ", amount_max_char_count - v.VATAmount.ToString().Length)) +
+						+ v.VATAmount + "\n"
+					);
+				}
+				sb.Append(tab + total_label +
+					string.Concat(
+						Enumerable.Repeat(" ",
+							taxable_max_char_count + rate_max_char_count + amount_max_char_count + 10 -
+							total_label.Length - pesr.GetTotalVATAmount().ToString().Length
+						)
+					) + pesr.GetTotalVATAmount() + "\n\n"
+				);
+
+				// Other mandatory data.
+				sb.Append(
+					PrintCommands.bold + "Cash Register Data:\n" + PrintCommands.reset +
+					tab + "PLU hash:    " + pesr.Signature.PrintPluHash + "\n" +
+					tab + "POS:         " + pesr.Event.POSSerialNumber + "\n" +
+					tab + "Version:     " + "~TODO~" + "\n" + // TODO
+					tab + "Terminal:    " + pesr.Event.TerminalId + "\n" +
+					tab + "Transaction: " + pesr.Event.TransactionNumber.ToString() + "\n" +
+					tab + "Date & time: " + pesr.Event.TransactionDateTime.ToString("dd/MM/yyyy HH:mm:ss") + "\n" +
+					tab + "User:        " + pesr.Event.OperatorName + "\n" +
+					"\n"
+				);
+
+				// FDM control data.
+				// Must follow specific naming conventions as dictated by the law!
+				// See circular no. E.T. 124.747, chapter 5, points 44 & 45!
+				sb.Append(
+					PrintCommands.bold + "Control Data:\n" + PrintCommands.reset +
+					tab + pesr.Signature.SignDateTime + "\n" +
+					tab + string.Format("Receipt counter: {0}/{1} {2}\n",
+						pesr.Signature.TicketNumber,
+						pesr.Signature.TicketCount,
+						pesr.Signature.EventType
+					) +
+					tab + "Receipt signature:\n" + tab + tab + pesr.Signature.Signature + "\n" +
+					tab + "Control module ID: " + pesr.Signature.FDMSerialNumber + "\n" +
+					tab + "VAT signing card ID: " + pesr.Signature.VSCIdentificationNumber + "\n\n"
+				);
+
+				// Invalidity footer.
+				if(pesr.Event.IsTrainingMode)
+					sb.Append(PrintCommands.center + PrintCommands.double_size +
+						      "THIS IS NOT A\nVALID VAT RECEIPT\n" + PrintCommands.reset
+					);
+
+				sb.Append(PrintCommands.feed_cut);
+
+				PosPrinter.PrintNormal(PrinterStation.Receipt, sb.ToString());
+			} catch(PosControlException e) {
+				Debug.WriteLine("Point of sale control exception: {0}", e);
+				if(e.ErrorCode == ErrorCode.Extended) {
+					Debug.WriteLine("Extended: ", e.ErrorCodeExtended);
+				}
+			}
 		}
 
 		private void HashAndSignCallback(IAsyncResult ar) {
@@ -131,6 +256,7 @@ namespace Outpost_Core_Kassa_WPF {
 						MessageBox.Show(e.ToString());
 					}
 				} else {
+					/*
 					string result_message = "Hash and sign result:\n";
 					result_message = string.Concat(
 						result_message, string.Format(
@@ -252,7 +378,7 @@ namespace Outpost_Core_Kassa_WPF {
 							)
 						);
 					}
-
+					
 					event_message = string.Concat(
 						event_message, string.Format(
 							"\tReference: {0}\n" +
@@ -276,7 +402,6 @@ namespace Outpost_Core_Kassa_WPF {
 						)
 					);
 					MessageBox.Show(event_message);
-
 
 					if(result.HasSignature) {
 						string signature_message = "Signature:\n";
@@ -306,7 +431,7 @@ namespace Outpost_Core_Kassa_WPF {
 						);
 						MessageBox.Show(signature_message);
 					}
-
+					*/
 					PrintReceipt(result);
 				}
 
@@ -368,6 +493,8 @@ namespace Outpost_Core_Kassa_WPF {
 
 		void ClearReceiptClickCallback(object sender, EventArgs e) {
 			ClearReceipt();
+			TrainingButton.IsChecked = false;
+			RefundButton.IsChecked = false;
 		}
 
 		private void OpenSqlConnection() {
@@ -485,11 +612,11 @@ namespace Outpost_Core_Kassa_WPF {
 			} else {
 				ChooseProductListingWindow w = new ChooseProductListingWindow();
 				w.ProductListingDataGrid.ItemsSource = plus;
-				var failure = w.ShowDialog();
+				w.ShowDialog();
 
 				Debug.WriteLine("ReturnIndex: {0}", w.ReturnIndex);
 
-				if(failure == false) {
+				if(w.ReturnIndex != -1) {
 					AddReceiptLine(
 						new ReceiptLine() {
 							SKU         = plus[w.ReturnIndex].SKU,
@@ -508,6 +635,8 @@ namespace Outpost_Core_Kassa_WPF {
 		private void AddReceiptLine(ReceiptLine l) {
 			bool AddedYet = false;
 
+			Debug.Assert(RefundButton.IsChecked != null);
+
 			// If the 'ReceiptLine' already exists on the receipt, increment its 'amount' value.
 			foreach(ReceiptLine lcur in ReceiptLines) {
 				if(	lcur.SKU         == l.SKU &&
@@ -515,7 +644,8 @@ namespace Outpost_Core_Kassa_WPF {
 					lcur.Description == l.Description &&
 					lcur.UnitPrice   == l.UnitPrice &&
 					lcur.VAT         == l.VAT) {
-					lcur.Amount++;
+					if((bool)RefundButton.IsChecked) lcur.Amount--;
+					else lcur.Amount++;
 					lcur.TotalPrice = lcur.UnitPrice * lcur.Amount;
 					AddedYet = true;
 				}
@@ -523,8 +653,9 @@ namespace Outpost_Core_Kassa_WPF {
 
 			// Otherwise, add a new line to the receipt.
 			if(!AddedYet) {
-				l.Amount = 1;
-				l.TotalPrice = l.UnitPrice;
+				if((bool)RefundButton.IsChecked) l.Amount = -1;
+				else l.Amount = 1;
+				l.TotalPrice = l.UnitPrice * l.Amount;
 				ReceiptLines.Add(l);
 			}
 			ReceiptDataGrid.Items.Refresh();
@@ -541,9 +672,7 @@ namespace Outpost_Core_Kassa_WPF {
 
 		private char DecodeVAT(byte b) {
 			char[] chars = {'A', 'B', 'C', 'D'};
-
 			Debug.Assert(0 <= b && b < 4);
-
 			return chars[b];
 		}
 

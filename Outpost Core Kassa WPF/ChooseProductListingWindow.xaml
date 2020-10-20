@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Outpost_Core_Kassa_WPF"
         mc:Ignorable="d"
-        Title="Choose product listing" Height="450" Width="800">
+        Title="Choose product listing" SizeToContent="WidthAndHeight">
     <Grid>
 		<DataGrid Name="ProductListingDataGrid"
 				  CanUserAddRows="False"
@@ -18,15 +18,16 @@
 				  IsReadOnly="True"
 				  MouseDoubleClick="MouseDoubleClickCallback"
 				  HeadersVisibility="Column"
-				  SelectionMode="Single">
+				  SelectionMode="Single"
+				  HorizontalAlignment="Center"
+				  VerticalAlignment="Center">
 			<DataGrid.Columns>
 				<DataGridTextColumn Header="SKU"
 									Binding="{Binding SKU}"/>
 				<DataGridTextColumn Header="Barcode"
 									Binding="{Binding Barcode}"/>
 				<DataGridTextColumn Header="Description"
-									Binding="{Binding Description}"
-									Width="*"/>
+									Binding="{Binding Description}"/>
 				<DataGridTextColumn Header="Unit Price"
 									Binding="{Binding UnitPrice}"/>
 				<DataGridTextColumn Header="VAT"

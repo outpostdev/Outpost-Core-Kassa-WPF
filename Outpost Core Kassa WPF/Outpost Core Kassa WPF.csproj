@@ -62,6 +62,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="PrintCommands.cs" />
     <Compile Include="ReceiptLine.cs" />
     <Compile Include="ChooseProductListingWindow.xaml.cs">
       <DependentUpon>ChooseProductListingWindow.xaml</DependentUpon>
@@ -109,6 +110,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <Resource Include="Resources\outpost_logo_black.bmp" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
